@@ -1,0 +1,175 @@
+using System;
+using System.Collections.Generic;
+
+namespace OptimizedTrees
+{
+    public enum DuplicatePolicy
+    {
+        Ignore,
+        Throw,
+        Count
+    }
+
+    public sealed class BinarySearchTree<T>
+    {
+        private sealed class Node
+        {
+            public T Key;
+            public Node? Left;
+            public Node? Right;
+            public int Count = 1;
+
+            public Node(T key) => Key = key;
+        }
+
+        private Node? _root;
+        private readonly IComparer<T> _cmp;
+        private readonly DuplicatePolicy _dupPolicy;
+
+        public BinarySearchTree(IComparer<T>? comparer = null, DuplicatePolicy duplicatePolicy = DuplicatePolicy.Ignore)
+        {
+            _cmp = comparer ?? Comparer<T>.Default;
+            _dupPolicy = duplicatePolicy;
+        }
+
+        public bool IsEmpty => _root is null;
+        public int NodeCount { get; private set; }
+
+        public bool Contains(T key) => TryGetCount(key, out _);
+
+        public bool TryGetCount(T key, out int count)
+        {
+            var cur = _root;
+            while (cur != null)
+            {
+                int c = _cmp.Compare(key, cur.Key);
+                if (c == 0)
+                {
+                    count = (_dupPolicy == DuplicatePolicy.Count) ? cur.Count : 1;
+                    return true;
+                }
+                cur = (c < 0) ? cur.Left : cur.Right;
+            }
+            count = 0;
+            return false;
+        }
+
+        public bool Insert(T key)
+        {
+            if (_root == null)
+            {
+                _root = new Node(key);
+                NodeCount = 1;
+                return true;
+            }
+
+            Node? parent = null;
+            Node? cur = _root;
+            int lastCmp = 0;
+
+            while (cur != null)
+            {
+                lastCmp = _cmp.Compare(key, cur.Key);
+                if (lastCmp == 0)
+                {
+                    if (_dupPolicy == DuplicatePolicy.Throw)
+                        throw new InvalidOperationException("Duplicate key");
+
+                    if (_dupPolicy == DuplicatePolicy.Count)
+                    {
+                        cur.Count++;
+                        return true;
+                    }
+
+                    return false;
+                }
+
+                parent = cur;
+                cur = (lastCmp < 0) ? cur.Left : cur.Right;
+            }
+
+            if (lastCmp < 0) parent!.Left = new Node(key);
+            else parent!.Right = new Node(key);
+
+            NodeCount++;
+            return true;
+        }
+
+        public bool Delete(T key)
+        {
+            Node? parent = null;
+            Node? cur = _root;
+
+            while (cur != null)
+            {
+                int c = _cmp.Compare(key, cur.Key);
+                if (c == 0) break;
+                parent = cur;
+                cur = (c < 0) ? cur.Left : cur.Right;
+            }
+
+            if (cur == null) return false;
+
+            if (_dupPolicy == DuplicatePolicy.Count && cur.Count > 1)
+            {
+                cur.Count--;
+                return true;
+            }
+
+            if (cur.Left == null || cur.Right == null)
+            {
+                Node? child = cur.Left ?? cur.Right;
+
+                if (parent == null) _root = child;
+                else if (ReferenceEquals(parent.Left, cur)) parent.Left = child;
+                else parent.Right = child;
+
+                NodeCount--;
+                return true;
+            }
+
+            Node succParent = cur;
+            Node succ = cur.Right!;
+            while (succ.Left != null)
+            {
+                succParent = succ;
+                succ = succ.Left;
+            }
+
+            cur.Key = succ.Key;
+            cur.Count = succ.Count;
+
+            Node? succChild = succ.Right;
+            if (ReferenceEquals(succParent.Left, succ))
+                succParent.Left = succChild;
+            else
+                succParent.Right = succChild;
+
+            NodeCount--;
+            return true;
+        }
+
+        public IEnumerable<T> InOrder()
+        {
+            var st = new Stack<Node>();
+            var cur = _root;
+
+            while (cur != null || st.Count > 0)
+            {
+                while (cur != null)
+                {
+                    st.Push(cur);
+                    cur = cur.Left;
+                }
+
+                cur = st.Pop();
+                int reps = (_dupPolicy == DuplicatePolicy.Count) ? cur.Count : 1;
+                for (int i = 0; i < reps; i++)
+                    yield return cur.Key;
+
+                cur = cur.Right;
+            }
+        }
+    }
+}
+
