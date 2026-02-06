@@ -1,0 +1,134 @@
+using System;
+using System.Collections.Generic;
+
+public static class OptimizedSort
+{
+    public static void Sort<T>(T[] a, IComparer<T>? comparer = null)
+    {
+        if (a == null || a.Length <= 1) return;
+        var cmp = comparer ?? Comparer<T>.Default;
+        int depthLimit = 2 * FloorLog2(a.Length);
+        IntroSort(a, 0, a.Length - 1, depthLimit, cmp);
+    }
+
+    private const int INSERTION_SORT_THRESHOLD = 16;
+
+    private static void IntroSort<T>(T[] a, int lo, int hi, int depthLimit, IComparer<T> cmp)
+    {
+        while (hi - lo > INSERTION_SORT_THRESHOLD)
+        {
+            if (depthLimit == 0)
+            {
+                HeapSort(a, lo, hi, cmp);
+                return;
+            }
+
+            depthLimit--;
+            int p = PartitionMedianOfThree(a, lo, hi, cmp);
+
+            if (p - lo < hi - p)
+            {
+                IntroSort(a, lo, p - 1, depthLimit, cmp);
+                lo = p + 1;
+            }
+            else
+            {
+                IntroSort(a, p + 1, hi, depthLimit, cmp);
+                hi = p - 1;
+            }
+        }
+
+        InsertionSort(a, lo, hi, cmp);
+    }
+
+    private static int PartitionMedianOfThree<T>(T[] a, int lo, int hi, IComparer<T> cmp)
+    {
+        int mid = lo + ((hi - lo) >> 1);
+
+        if (cmp.Compare(a[mid], a[lo]) < 0) Swap(a, lo, mid);
+        if (cmp.Compare(a[hi], a[lo]) < 0) Swap(a, lo, hi);
+        if (cmp.Compare(a[hi], a[mid]) < 0) Swap(a, mid, hi);
+
+        Swap(a, mid, hi - 1);
+        T pivot = a[hi - 1];
+
+        int i = lo, j = hi - 1;
+        while (true)
+        {
+            while (cmp.Compare(a[++i], pivot) < 0) { }
+            while (cmp.Compare(a[--j], pivot) > 0) { }
+            if (i >= j) break;
+            Swap(a, i, j);
+        }
+
+        Swap(a, i, hi - 1);
+        return i;
+    }
+
+    private static void InsertionSort<T>(T[] a, int lo, int hi, IComparer<T> cmp)
+    {
+        for (int i = lo + 1; i <= hi; i++)
+        {
+            T key = a[i];
+            int j = i - 1;
+            while (j >= lo && cmp.Compare(a[j], key) > 0)
+            {
+                a[j + 1] = a[j];
+                j--;
+            }
+            a[j + 1] = key;
+        }
+    }
+
+    private static void HeapSort<T>(T[] a, int lo, int hi, IComparer<T> cmp)
+    {
+        int n = hi - lo + 1;
+
+        for (int i = (n >> 1) - 1; i >= 0; i--)
+            SiftDown(a, lo, n, i, cmp);
+
+        for (int end = n - 1; end > 0; end--)
+        {
+            Swap(a, lo, lo + end);
+            SiftDown(a, lo, end, 0, cmp);
+        }
+    }
+
+    private static void SiftDown<T>(T[] a, int baseIdx, int size, int root, IComparer<T> cmp)
+    {
+        while (true)
+        {
+            int left = (root << 1) + 1;
+            if (left >= size) return;
+
+            int right = left + 1;
+            int largest = left;
+
+            if (right < size && cmp.Compare(a[baseIdx + right], a[baseIdx + left]) > 0)
+                largest = right;
+
+            if (cmp.Compare(a[baseIdx + root], a[baseIdx + largest]) >= 0)
+                return;
+
+            Swap(a, baseIdx + root, baseIdx + largest);
+            root = largest;
+        }
+    }
+
+    private static void Swap<T>(T[] a, int i, int j)
+    {
+        if (i == j) return;
+        (a[i], a[j]) = (a[j], a[i]);
+    }
+
+    private static int FloorLog2(int n)
+    {
+        int log = 0;
+        while (n >= 2)
+        {
+            n >>= 1;
+            log++;
+        }
+        return log;
+    }
+}
