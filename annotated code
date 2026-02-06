@@ -1,0 +1,94 @@
+using System;
+using System.Diagnostics;
+using System.Linq;
+using System.Threading.Tasks;
+
+public static class PerformanceReport
+{
+    public static async Task RunAsync()
+    {
+        int[] sizes = { 1_000, 10_000, 100_000 };
+
+        foreach (var n in sizes)
+        {
+            var data = Enumerable.Range(0, n).Select(_ => Random.Shared.Next()).ToArray();
+
+     
+            var copy = (int[])data.Clone();
+            var sortMs = TimeMs(() => OptimizedSort.Sort(copy));
+            Console.WriteLine($"Sort n={n}: {sortMs} ms");
+
+           
+            var bst = new OptimizedTrees.BinarySearchTree<int>(duplicatePolicy: OptimizedTrees.DuplicatePolicy.Ignore);
+
+            var insertMs = TimeMs(() =>
+            {
+                for (int i = 0; i < n; i++) bst.Insert(data[i]);
+            });
+            Console.WriteLine($"BST Insert n={n}: {insertMs} ms");
+
+            var containsMs = TimeMs(() =>
+            {
+                for (int i = 0; i < n; i++) bst.Contains(data[i]);
+            });
+            Console.WriteLine($"BST Contains n={n}: {containsMs} ms");
+
+            var deleteMs = TimeMs(() =>
+            {
+                for (int i = 0; i < n; i++) bst.Delete(data[i]);
+            });
+            Console.WriteLine($"BST Delete n={n}: {deleteMs} ms");
+
+           
+            var exec = new TaskExecutor(maxConcurrency: Math.Min(8, Environment.ProcessorCount));
+            int tasks = Math.Min(50_000, n);
+            var taskMs = await TimeMsAsync(async () =>
+            {
+                var tcs = new TaskCompletionSource();
+                int remaining = tasks;
+
+                for (int i = 0; i < tasks; i++)
+                {
+                    exec.Enqueue(async () =>
+                    {
+                        await Task.Yield();
+                        if (System.Threading.Interlocked.Decrement(ref remaining) == 0)
+                            tcs.TrySetResult();
+                    });
+                }
+
+                await tcs.Task;
+            });
+            Console.WriteLine($"TaskExecutor tasks={tasks}: {taskMs} ms");
+
+            Console.WriteLine();
+        }
+    }
+
+    // Uses Release mode measurement style: repeat and take minimum to reduce GC/outliers.
+    private static long TimeMs(Action action, int repeats = 5)
+    {
+        long best = long.MaxValue;
+        for (int i = 0; i < repeats; i++)
+        {
+            var sw = Stopwatch.StartNew();
+            action();
+            sw.Stop();
+            best = Math.Min(best, sw.ElapsedMilliseconds);
+        }
+        return best;
+    }
+
+    private static async Task<long> TimeMsAsync(Func<Task> action, int repeats = 5)
+    {
+        long best = long.MaxValue;
+        for (int i = 0; i < repeats; i++)
+        {
+            var sw = Stopwatch.StartNew();
+            await action();
+            sw.Stop();
+            best = Math.Min(best, sw.ElapsedMilliseconds);
+        }
+        return best;
+    }
+}
